@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Global Person Profile (One Person, One Identity)
+model Person {
+  id              String             @id @default(uuid())
+  flightpathId    String             @unique // e.g. FP-2026-00001
+  firstName       String             @map("first_name")
+  lastName        String             @map("last_name")
+  email           String             @unique
+  phone           String?
+  status          PersonStatus       @default(ACTIVE)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  userAccount     UserAccount?
+  memberships     TenantMembership[]
+
+  @@map("people")
+}
+
+// Authentication & Login Credentials
+model UserAccount {
+  id              String             @id @default(uuid())
+  personId        String             @unique @map("person_id")
+  email           String             @unique
+  passwordHash    String             @map("password_hash")
+  isSuperAdmin    Boolean            @default(false) @map("is_super_admin")
+  isActive        Boolean            @default(true) @map("is_active")
+  lastLoginAt     DateTime?          @map("last_login_at")
+  inviteToken     String?            @unique @map("invite_token")
+  inviteExpiresAt DateTime?          @map("invite_expires_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  person          Person             @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@map("user_accounts")
+}
+
+// Tenant Entity (e.g. Flight Academy, Airline, ATO)
+model Tenant {
+  id              String             @id @default(uuid())
+  code            String             @unique // e.g. "FLIGHT-ACADEMY-1"
+  name            String
+  status          TenantStatus       @default(ACTIVE)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  memberships     TenantMembership[]
+
+  @@map("tenants")
+}
+
+// Membership linking Person to Tenant
+model TenantMembership {
+  id              String             @id @default(uuid())
+  personId        String             @map("person_id")
+  tenantId        String             @map("tenant_id")
+  status          MembershipStatus   @default(ACTIVE)
+  joinedAt        DateTime           @default(now()) @map("joined_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  person          Person             @relation(fields: [personId], references: [id], onDelete: Cascade)
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roles           TenantMemberRole[]
+
+  @@unique([personId, tenantId])
+  @@map("tenant_memberships")
+}
+
+// Contextual Roles within a Tenant (Person can have multiple roles within one tenant)
+model TenantMemberRole {
+  id                  String           @id @default(uuid())
+  tenantMembershipId  String           @map("tenant_membership_id")
+  role                TenantRole
+  assignedAt          DateTime         @default(now()) @map("assigned_at")
+
+  membership          TenantMembership @relation(fields: [tenantMembershipId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantMembershipId, role])
+  @@map("tenant_member_roles")
+}
+
+enum TenantRole {
+  ADMIN
+  INSTRUCTOR
+  STUDENT
+}
+
+enum PersonStatus {
+  ACTIVE
+  INACTIVE
+  INVITED
+}
+
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+}
